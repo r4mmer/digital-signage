@@ -89,11 +89,11 @@ Environment=AWS_ACCESS_KEY_ID=your-access-key
 Environment=AWS_SECRET_ACCESS_KEY=your-secret-key
 
 # Security settings
-NoNewPrivileges=true
-PrivateTmp=true
-ProtectSystem=strict
-ProtectHome=true
-ReadWritePaths=/home/pi/digital-signage
+# NoNewPrivileges=true
+# PrivateTmp=true
+# ProtectSystem=strict
+# ProtectHome=true
+# ReadWritePaths=/home/pi/digital-signage
 
 [Install]
 WantedBy=multi-user.target

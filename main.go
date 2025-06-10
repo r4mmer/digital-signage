@@ -10,6 +10,7 @@ import (
 	"net/http"
 	"os"
 	"path/filepath"
+	"slices"
 	"sort"
 	"strconv"
 	"strings"
@@ -147,19 +148,22 @@ func (s *Server) handleIndex(w http.ResponseWriter, r *http.Request) {
         }
         
         #video-container {
-            width: 100vw;
-            height: 100vh;
-            display: flex;
-            align-items: center;
-            justify-content: center;
+		    width: 100vw;
+		    height: 100vh;
+		    display: flex;
+		    align-items: center;
+		    justify-content: center;
+		    overflow: hidden;
         }
-        
+
         video {
-            width: 100%;
-            height: 100%;
-            object-fit: cover;
+            width: auto;
+            height: auto;
+            max-height: 100%;
+            max-width: 100%;
+            object-fit: contain;
         }
-        
+
         #loading {
             position: absolute;
             top: 50%;
@@ -418,6 +422,10 @@ func (s *Server) syncFromS3() {
 		return
 	}
 
+	localFilesToRemove := make([]string, len(s.mediaList))
+	for i := range len(s.mediaList) {
+		localFilesToRemove[i] = s.mediaList[i].Path
+	}
 	syncCount := 0
 	for _, obj := range resp.Contents {
 		if obj.Key == nil {
@@ -429,6 +437,11 @@ func (s *Server) syncFromS3() {
 
 		// Check if file exists
 		if _, err := os.Stat(localPath); err == nil {
+			// Delete from known localfiles
+			index := slices.Index(localFilesToRemove, localPath)
+			if index != -1 {
+				localFilesToRemove = slices.Delete(localFilesToRemove, index, index+1)
+			}
 			continue
 		}
 		// // Check if file exists and has same size
@@ -446,6 +459,13 @@ func (s *Server) syncFromS3() {
 
 		syncCount++
 		log.Printf("Downloaded: %s", fileName)
+	}
+
+	if len(localFilesToRemove) > 0 {
+		log.Printf("%d files were deleted from S3 and need to be deleted from local storage", len(localFilesToRemove))
+		for _, localF := range localFilesToRemove {
+			os.Remove(localF)
+		}
 	}
 
 	if syncCount > 0 {
