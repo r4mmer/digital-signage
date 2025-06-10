@@ -430,10 +430,10 @@ func (s *Server) syncFromS3() {
 		// Check if file exists and has same size
 		if info, err := os.Stat(localPath); err == nil {
 			// XXX maybe we should use a checksum? or only validate the name?
-			// continue
-			if info.Size() == obj.Size {
-				continue // File already exists with same size
-			}
+			continue
+			// if info.Size() == obj.Size {
+			// 	continue // File already exists with same size
+			// }
 		}
 
 		// Download file

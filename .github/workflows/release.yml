@@ -1,0 +1,193 @@
+name: Build and Release
+
+on:
+  push:
+    tags:
+      - 'v*'
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Release version (e.g., v1.0.0)'
+        required: true
+        default: 'v1.0.0'
+
+env:
+  GO_VERSION: '1.24'
+
+jobs:
+  build:
+    name: Build Binaries
+    runs-on: ubuntu-latest
+    strategy:
+      matrix:
+        include:
+          - target: pi-zero
+            goos: linux
+            goarch: arm
+            goarm: "6"
+            name: "Raspberry Pi Zero/W"
+          - target: pi-3
+            goos: linux
+            goarch: arm
+            goarm: "7"
+            name: "Raspberry Pi 3"
+          - target: pi-4
+            goos: linux
+            goarch: arm64
+            goarm: ""
+            name: "Raspberry Pi 4/400"
+          - target: linux-amd64
+            goos: linux
+            goarch: amd64
+            goarm: ""
+            name: "Linux x86_64"
+
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Set up Go
+      uses: actions/setup-go@v4
+      with:
+        go-version: ${{ env.GO_VERSION }}
+
+    - name: Cache Go modules
+      uses: actions/cache@v3
+      with:
+        path: |
+          ~/.cache/go-build
+          ~/go/pkg/mod
+        key: ${{ runner.os }}-go-${{ hashFiles('**/go.sum') }}
+        restore-keys: |
+          ${{ runner.os }}-go-
+
+    - name: Download dependencies
+      run: go mod download
+
+    - name: Build binary
+      env:
+        GOOS: ${{ matrix.goos }}
+        GOARCH: ${{ matrix.goarch }}
+        GOARM: ${{ matrix.goarm }}
+        CGO_ENABLED: 0
+      run: |
+        mkdir -p build
+        binary_name="digital-signage-${{ matrix.target }}"
+        if [ "${{ matrix.goos }}" = "windows" ]; then
+          binary_name="${binary_name}.exe"
+        fi
+
+        go build -ldflags="-w -s -X main.Version=${{ github.ref_name || github.event.inputs.version }}" \
+          -o "build/${binary_name}" .
+
+        # Create checksums
+        cd build
+        sha256sum "${binary_name}" > "${binary_name}.sha256"
+
+    - name: Upload build artifacts
+      uses: actions/upload-artifact@v3
+      with:
+        name: digital-signage-${{ matrix.target }}
+        path: |
+          build/digital-signage-${{ matrix.target }}*
+        retention-days: 1
+
+  package:
+    name: Create Release Packages
+    runs-on: ubuntu-latest
+    needs: build
+    env:
+      GH_TOKEN: ${{ secrets.GH_TOKEN }}
+      APPVERSION: ${{ github.ref_name || github.event.inputs.version }}
+    steps:
+    - name: Checkout code
+      uses: actions/checkout@v4
+
+    - name: Download all artifacts
+      uses: actions/download-artifact@v3
+      with:
+        path: artifacts
+
+    - name: Organize files
+      run: |
+        mkdir -p release/binaries
+
+        # Move all binaries to release directory
+        find artifacts -name "digital-signage-*" -type f | while read file; do
+          cp "$file" release/binaries/
+        done
+
+        # Copy deployment files
+        cp digital-signage.service release/
+        cp install.sh release/
+        cp kiosk.sh release/
+        cp .env.example release/
+        cp README.md release/
+
+        # Make scripts executable
+        chmod +x release/install.sh release/kiosk.sh
+
+    - name: Create platform-specific packages
+      run: |
+        cd release
+
+        # Create individual platform packages
+        for target in pi-zero pi-3 pi-4 linux-amd64; do
+          mkdir -p "packages/digital-signage-${target}"
+
+          # Copy binary
+          cp "binaries/digital-signage-${target}" "packages/digital-signage-${target}/"
+          cp "binaries/digital-signage-${target}.sha256" "packages/digital-signage-${target}/"
+
+          # Copy deployment files
+          cp install.sh "packages/digital-signage-${target}/"
+          cp kiosk.sh "packages/digital-signage-${target}/"
+          # Create tar.gz package
+          tar -czf "digital-signage-${target}.tar.gz" -C packages "digital-signage-${target}"
+        done
+
+    - name: Generate release notes
+      run: |
+        cat > release_notes.md << EOF
+        # Digital Signage Release ${{ github.ref_name || github.event.inputs.version }}
+
+        ## 📦 Downloads
+
+        Choose the appropriate package for your device:
+
+        | Device | Package | Description |
+        |--------|---------|-------------|
+        | Raspberry Pi Zero/W | \`digital-signage-pi-zero.tar.gz\` | ARMv6 compatible |
+        | Raspberry Pi 3 | \`digital-signage-pi-3.tar.gz\` | ARMv7 compatible |
+        | Raspberry Pi 4/400 | \`digital-signage-pi-4.tar.gz\` | ARM64 compatible |
+        | Linux x86_64 | \`digital-signage-linux-amd64.tar.gz\` | Standard Linux systems |
+
+        ## 🚀 Quick Start
+
+        1. Download the appropriate package for your device
+        2. Extract: \`tar -xzf digital-signage-<target>.tar.gz\`
+        3. Run: \`cd digital-signage-<target> && chmod +x install.sh && ./install.sh\`
+        4. Add video files to \`/home/pi/digital-signage/media/\`
+        5. Start: \`sudo systemctl start digital-signage\`
+
+        ## 🔧 What's Included
+
+        - Pre-compiled binary for your platform
+        - Installation script (\`install.sh\`)
+        - Systemd service configuration
+        - Kiosk mode setup script (\`kiosk.sh\`)
+        - Environment configuration template
+        - Complete documentation
+
+        ## 🔍 Verification
+
+        Each binary includes a SHA256 checksum file. Verify integrity with:
+        \`\`\`bash
+        sha256sum -c digital-signage-<target>.sha256
+        \`\`\`
+        EOF
+
+    - name: Create release
+      run: |
+        gh release create ${{ github.ref_name || github.event.inputs.version }} --notes-file release_notes.md --title "Digital Signage ${{ github.ref_name || github.event.inputs.version }}"
+        find packages -maxdepth 1 | tail -n+2 | xargs gh release upload ${{ github.ref_name || github.event.inputs.version }}
