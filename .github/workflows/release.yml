@@ -118,11 +118,8 @@ jobs:
         done
 
         # Copy deployment files
-        cp digital-signage.service release/
         cp install.sh release/
         cp kiosk.sh release/
-        cp .env.example release/
-        cp README.md release/
 
         # Make scripts executable
         chmod +x release/install.sh release/kiosk.sh
@@ -190,4 +187,4 @@ jobs:
     - name: Create release
       run: |
         gh release create ${{ github.ref_name || github.event.inputs.version }} --notes-file release_notes.md --title "Digital Signage ${{ github.ref_name || github.event.inputs.version }}"
-        find packages -maxdepth 1 | tail -n+2 | xargs gh release upload ${{ github.ref_name || github.event.inputs.version }}
+        find release/packages -maxdepth 1 -type f | tail -n+2 | xargs gh release upload ${{ github.ref_name || github.event.inputs.version }}
