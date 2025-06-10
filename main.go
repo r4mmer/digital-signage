@@ -427,14 +427,16 @@ func (s *Server) syncFromS3() {
 		fileName := *obj.Key
 		localPath := filepath.Join(s.config.MediaDir, fileName)
 
-		// Check if file exists and has same size
-		if info, err := os.Stat(localPath); err == nil {
-			// XXX maybe we should use a checksum? or only validate the name?
+		// Check if file exists
+		if _, err := os.Stat(localPath); err == nil {
 			continue
-			// if info.Size() == obj.Size {
-			// 	continue // File already exists with same size
-			// }
 		}
+		// // Check if file exists and has same size
+		// if info, err := os.Stat(localPath); err == nil {
+		// 	if info.Size() == obj.Size {
+		// 		continue // File already exists with same size
+		// 	}
+		// }
 
 		// Download file
 		if err := s.downloadFromS3(ctx, fileName, localPath); err != nil {
