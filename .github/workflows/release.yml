@@ -187,4 +187,5 @@ jobs:
     - name: Create release
       run: |
         gh release create ${{ github.ref_name || github.event.inputs.version }} --notes-file release_notes.md --title "Digital Signage ${{ github.ref_name || github.event.inputs.version }}"
-        find packages -maxdepth 1 -type f | tail -n+2 | xargs gh release upload ${{ github.ref_name || github.event.inputs.version }}
+        cd release/packages
+        gh release upload ${{ github.ref_name || github.event.inputs.version }} digital-signage-pi-zero.tar.gz digital-signage-pi-3.tar.gz digital-signage-pi-4.tar.gz digital-signage-linux-amd64.tar.gz
